@@ -33,23 +33,19 @@ func main() {
 	user2.Profile = profile2
 	user2.Name = "user2"
 
-	tag1 := new(Tag)
+	tag1 := new(ArticleTag)
 	tag1.Name = "tag1"
 
-	tag2 := new(Tag)
+	tag2 := new(ArticleTag)
 	tag2.Name = "tag2"
 
-	post1 := new(Post)
+	post1 := new(ArticlePost)
 	post1.Title = "hello1"
 	post1.User = user1
-	// post1.Tags = []*Tag{tag1, tag2}
-	// post1.Tags = append(post1.Tags, tag1, tag2)
 
-	post2 := new(Post)
+	post2 := new(ArticlePost)
 	post2.Title = "hello2"
 	post2.User = user2
-	// post2.Tags = []*Tag{tag1}
-	// post1.Tags = append(post1.Tags, tag1)
 
 	o.Insert(profile1)
 	o.Insert(profile2)
@@ -71,8 +67,8 @@ func main() {
 	{
 		// 外键（一对多）是加载的
 		// 多对多是不加载的
-		var posts []*Post
-		num, err := o.QueryTable("post").Filter("Tags__Tag__Name", "tag1").All(&posts)
+		var posts []*ArticlePost
+		num, err := o.QueryTable("article_post").Filter("Tags__ArticleTag__Name", "tag1").All(&posts)
 		if err == nil {
 			fmt.Printf("%d posts read\n", num)
 			for _, post := range posts {

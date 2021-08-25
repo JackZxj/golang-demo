@@ -10,7 +10,8 @@ import (
 func main() {
 	// TestStruct()
 	// TestStu()
-	TestStructMerge()
+	// TestStructMerge()
+	TestNoJsonInline()
 }
 
 type Project struct {
@@ -168,4 +169,20 @@ func TestStructMerge() {
 	fmt.Println("### before:", as)
 	structAssign(&as, &bs)
 	fmt.Println("### after:", as)
+}
+
+type HH struct {
+	H1 string `json:"h1"`
+	H2 string `json:"h2"`
+}
+
+type HHH struct {
+	HH
+	H3 string `json:"h3"`
+}
+
+func TestNoJsonInline() {
+	h := HHH{HH{"1", "2"}, "3"}
+	v, _ := json.Marshal(h)
+	fmt.Println(string(v)) // {"h1":"1","h2":"2","h3":"3"}
 }
