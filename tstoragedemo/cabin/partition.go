@@ -29,8 +29,8 @@ type partition interface {
 	maxTimestamp() int64
 	// size returns the number of data points the partition holds.
 	size() int
-	// storageSize returns the used storage size
-	storageSize() uint64
+	// usedStorage returns the used storage size
+	usedStorage() uint64
 	// active means not only writable but having the qualities to be the head partition.
 	active() bool
 	// expired means it should get removed.

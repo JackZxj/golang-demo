@@ -7,9 +7,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
-	"github.com/nakabonne/tstorage/internal/syscall"
+	"github.com/JackZxj/golang-demo/tstoragedemo/internal/syscall"
 )
 
 const (
@@ -29,6 +30,8 @@ type diskPartition struct {
 	mappedFile []byte
 	// duration to store data
 	retention time.Duration
+	// the used storage size
+	currentSize uint64
 }
 
 // meta is a mapper for a meta file, which is put for each partition.
@@ -99,11 +102,10 @@ func (d *diskPartition) insertRows(_ []Row) ([]Row, error) {
 	return nil, fmt.Errorf("can't insert rows into disk partition")
 }
 
-func (d *diskPartition) selectDataPoints(metric string, labels []Label, start, end int64) ([]*DataPoint, error) {
+func (d *diskPartition) selectDataPoints(name string, start, end int64) ([]*DataPoint, error) {
 	if d.expired() {
 		return nil, fmt.Errorf("this partition is expired")
 	}
-	name := marshalMetricName(metric, labels)
 	mt, ok := d.meta.Metrics[name]
 	if !ok {
 		return nil, ErrNoDataPoints
@@ -145,6 +147,10 @@ func (d *diskPartition) maxTimestamp() int64 {
 
 func (d *diskPartition) size() int {
 	return d.meta.NumDataPoints
+}
+
+func (d *diskPartition) usedStorage() uint64 {
+	return atomic.LoadUint64(&d.currentSize)
 }
 
 // Disk partition is immutable.
