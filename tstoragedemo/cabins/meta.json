@@ -1,0 +1,16 @@
+{
+    "maxStorage": 800000000,
+    "cabins": [
+        {
+            "name": "name0",
+            "createdAt": "2021-09-11T17:40:09.0682147+08:00",
+            "account": "admin"
+        },
+        {
+            "name": "name1",
+            "createdAt": "2021-09-11T17:40:09.0682147+08:00",
+            "account": "admin"
+        }
+    ],
+    "createdAt": "2021-09-11T17:40:09.0682147+08:00"
+}
