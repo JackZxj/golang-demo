@@ -146,7 +146,30 @@ func isFileExist(name string) (bool, error) {
 	return !info.IsDir(), nil
 }
 
-func genTLS(altIPs, altDNSs []string, writeToDisk bool) (*tls.Config, error) {
+func getSSLKeyFile() (f *os.File, err error) {
+	filename := "sslkeylog.log"
+	exist, err := isFileExist(filename)
+	if err != nil {
+		err = fmt.Errorf("can not write file: %v", err)
+		return nil, err
+	}
+	if exist {
+		f, err = os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644) //打开文件
+		if err != nil {
+			err = fmt.Errorf("can not open file: %w", err)
+			return nil, err
+		}
+	} else {
+		f, err = os.Create(filename) //创建文件
+		if err != nil {
+			err = fmt.Errorf("can not create file: %v", err)
+			return nil, err
+		}
+	}
+	return
+}
+
+func genTLS(altIPs, altDNSs []string, enableKeyLogFile, writeToDisk bool) (*tls.Config, error) {
 	ips := []net.IP{}
 	addlocalhost := true
 	for _, ip := range altIPs {
@@ -207,10 +230,22 @@ func genTLS(altIPs, altDNSs []string, writeToDisk bool) (*tls.Config, error) {
 		}
 	}
 
-	return &tls.Config{
+	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
 		NextProtos:   []string{"quic"}, // is required for quic
-	}, nil
+	}
+	if !enableKeyLogFile {
+		return tlsConfig, nil
+	}
+
+	f, err := getSSLKeyFile()
+	if err != nil {
+		err = fmt.Errorf("can not get ssl key file: %v", err)
+		return nil, err
+	}
+	tlsConfig.KeyLogWriter = f
+
+	return tlsConfig, err
 }
 
 func getIPPort(addr string) (ip string, port int, err error) {
@@ -273,7 +308,7 @@ func tlsServe(ctx context.Context, addr string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	tlsConfig, err := genTLS([]string{ip}, nil, false)
+	tlsConfig, err := genTLS([]string{ip}, nil, true, false)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -361,7 +396,7 @@ func quicServe(ctx context.Context, addr string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	tlsConfig, err := genTLS([]string{ip}, nil, false)
+	tlsConfig, err := genTLS([]string{ip}, nil, true, false)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -477,9 +512,14 @@ func udpClient(ctx context.Context, addr string) {
 }
 
 func quicClient(ctx context.Context, addr string) {
+	f, err := getSSLKeyFile()
+	if err != nil {
+		log.Fatal(err)
+	}
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"quic"},
+		KeyLogWriter:       f,
 	}
 	sess, err := quic.DialAddr(addr, tlsConf, nil)
 	if err != nil {
