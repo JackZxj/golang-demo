@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
+	"time"
 	"unsafe"
 
 	// "io/ioutil"
@@ -15,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/JackZxj/golang-demo/sequencefile/syscall"
+	mmapgo "github.com/edsrzf/mmap-go"
 )
 
 // DEFAULT_BLOCK_SIZE means the max bytes of the block
@@ -86,7 +89,7 @@ type Meta struct {
 type SeqFile struct {
 	// files   map[string]*os.File
 	meta    Meta
-	wal     [][]byte
+	wal     mmapgo.MMap
 	walSize int
 	rwm     sync.RWMutex
 
@@ -120,6 +123,17 @@ func (s *SeqFile) Init() error {
 			if err != nil {
 				return fmt.Errorf("create data path: %w", err)
 			}
+			walf, err := os.OpenFile(filepath.Join(dataPath, "wal"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+			if err != nil {
+				return fmt.Errorf("create wal file: %w", err)
+			}
+			s.meta.Sync = SRand(time.Now().UnixNano(), SYNC_HASH_SIZE)
+			walf.Truncate(SYNC_SIZE)
+			s.wal, err = mmapgo.Map(walf, mmapgo.RDWR, 0)
+			if err != nil {
+				return fmt.Errorf("mmap wal: %w", err)
+			}
+
 			return nil
 		}
 		return fmt.Errorf("stat path: %w", err)
@@ -352,4 +366,16 @@ func MmapSize(size int) (int, error) {
 		sz = ((sz / pageSize) + 1) * pageSize
 	}
 	return int(sz), nil
+}
+
+var alpha = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+// SRand generates a random string of fixed size.
+func SRand(seed int64, size int) []byte {
+	buf := make([]byte, size)
+	rand.Seed(seed)
+	for i := 0; i < size; i++ {
+		buf[i] = alpha[rand.Intn(len(alpha))]
+	}
+	return buf
 }
