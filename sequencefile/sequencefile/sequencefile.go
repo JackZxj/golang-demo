@@ -22,8 +22,8 @@ import (
 
 // DEFAULT_BLOCK_SIZE means the max bytes of the block
 const DEFAULT_BLOCK_SIZE = 1 << 17 // 128kb
-// DEFAULT_RECORD_SIZE means the max record length of the block
-const DEFAULT_RECORD_SIZE = 1 << 6 // 64
+// DEFAULT_RECORD_NUM_IN_BLOCK means the max record length of the block
+const DEFAULT_RECORD_NUM_IN_BLOCK = 1 << 6 // 64
 // MAX_FILE_SIZE means the max bytes of file
 const MAX_FILE_SIZE = 1 << 24 // 16Mb
 
@@ -37,6 +37,8 @@ const SYNC_HASH_SIZE = 16
 // SYNC_SIZE means escape + hash
 const SYNC_SIZE = SYNC_ESCAPE_SIZE + SYNC_HASH_SIZE
 
+const DEFAULT_MAX_RECOED_SIZE = DEFAULT_BLOCK_SIZE - SYNC_SIZE - 4 - 8
+
 /*
  4byte    16byte      4byte           8byte   n1 byte 4byte           8byte   n2 byte  ...  4byte           8byte   n3 byte
 ----------------------------------------------------------------------------------------------------------------------------
@@ -47,15 +49,16 @@ const SYNC_SIZE = SYNC_ESCAPE_SIZE + SYNC_HASH_SIZE
 ↑                                                                                                                          ↑
 |----------------------------------------------- block 1 ------------------------------------------------------------------|
 
-record length = len(value)
+record length = len(value) + 8
 */
 
 type SeqFiler interface {
 	Read(index int64) ([]byte, error)
 	// write a byte slice, returns index or error
-	Write(value []byte) (int, error)
+	Write(value []byte) (int64, error)
 	Size() uint64
 	Flush() error
+	Close() error
 }
 
 type Index struct {
@@ -64,34 +67,23 @@ type Index struct {
 	Index    int64  `json:"index"`
 }
 
-type KeyType string
-
-const (
-	KeyTypeInt    KeyType = "int"
-	KeyTypeInt32  KeyType = "int32"
-	KeyTypeInt64  KeyType = "int64"
-	KeyTypeString KeyType = "string"
-)
-
 type Meta struct {
 	Sync     []byte   `json:"sync"`
 	Indexs   []*Index `json:"indexs"`
 	MinIndex int64    `json:"minIndex"`
 	MaxIndex int64    `json:"maxIndex"`
-	KeyType  KeyType  `json:"keyType"`
 }
 
-// type File struct {
-// 	file *os.File
-// 	rwm  sync.RWMutex
-// }
-
 type SeqFile struct {
-	// files   map[string]*os.File
-	meta    Meta
-	wal     mmapgo.MMap
-	walSize int
-	rwm     sync.RWMutex
+	meta Meta
+	walf *os.File
+	// wal  mmapgo.MMap
+	rwm sync.RWMutex
+
+	walIndexs   []*Index
+	lastSyncPos int64
+	curIndex    int64
+	blockRemain int
 
 	endianOrder binary.ByteOrder
 }
@@ -99,8 +91,11 @@ type SeqFile struct {
 var partitionRegex = regexp.MustCompile(`^p-.+`)
 var dataPath = "data"
 
+var ErrWalCorrupt = errors.New("wal is corrupt")
 var ErrFileCorrupt = errors.New("file is corrupt")
 var ErrIndexNotFound = errors.New("index not found")
+var ErrEmptyIndexs = errors.New("empty indexs")
+var ErrDataOversize = errors.New(fmt.Sprintf("data over size, max size: %dbyte", DEFAULT_MAX_RECOED_SIZE))
 
 func (s *SeqFile) Init() error {
 	if IsLittleEndian() {
@@ -109,54 +104,114 @@ func (s *SeqFile) Init() error {
 		s.endianOrder = binary.BigEndian
 	}
 
-	// s.files = make(map[string]*os.File)
+	newDataPath := func() error {
+		err := os.MkdirAll(dataPath, 0755)
+		if err != nil {
+			return fmt.Errorf("create data path: %w", err)
+		}
+		s.curIndex = -1
+		return s.initWal()
+	}
 
-	// pwd, err := os.Getwd()
-	// if err != nil {
-	// 	return fmt.Errorf("get pwd: %w", err)
-	// }
-	// dataPath := filepath.Join(pwd, "data")
 	f, err := os.Stat(dataPath)
 	if err != nil {
+		// data path not exists, create it
 		if os.IsNotExist(err) {
-			err = os.MkdirAll(dataPath, 0755)
-			if err != nil {
-				return fmt.Errorf("create data path: %w", err)
-			}
-			walf, err := os.OpenFile(filepath.Join(dataPath, "wal"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
-			if err != nil {
-				return fmt.Errorf("create wal file: %w", err)
-			}
-			s.meta.Sync = SRand(time.Now().UnixNano(), SYNC_HASH_SIZE)
-			walf.Truncate(SYNC_SIZE)
-			s.wal, err = mmapgo.Map(walf, mmapgo.RDWR, 0)
-			if err != nil {
-				return fmt.Errorf("mmap wal: %w", err)
-			}
-
-			return nil
+			return newDataPath()
 		}
 		return fmt.Errorf("stat path: %w", err)
 	}
 	if !f.IsDir() {
-		err = os.MkdirAll(dataPath, 0755)
-		if err != nil {
-			return fmt.Errorf("create data path: %w", err)
-		}
-		return nil
+		return fmt.Errorf("cannot create directory %q: File exists", dataPath)
 	}
 
+	// if data path exists,
+	// read meta.json
 	m := Meta{}
+	var decoder *json.Decoder
+	initSync := true
 	mf, err := os.Open(filepath.Join(dataPath, "meta.json"))
 	if err != nil {
+		if os.IsNotExist(err) {
+			s.curIndex = -1
+			goto INIT_WAL
+		}
 		return fmt.Errorf("read metadata: %w", err)
 	}
 	defer mf.Close()
-	decoder := json.NewDecoder(mf)
-	if err := decoder.Decode(&m); err != nil {
+	decoder = json.NewDecoder(mf)
+	if err = decoder.Decode(&m); err != nil {
 		return fmt.Errorf("decode metadata: %w", err)
 	}
 	s.meta = m
+	initSync = false
+	s.curIndex = s.meta.MaxIndex
+
+INIT_WAL:
+	// read wal
+	walf, err := os.OpenFile(filepath.Join(dataPath, "wal"), os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return s.initWal()
+		}
+		return fmt.Errorf("open wal file: %w", err)
+	}
+	s.walf = walf
+	wal, err := mmapgo.Map(s.walf, mmapgo.RDWR, 0)
+	defer wal.Unmap()
+	if err != nil {
+		return fmt.Errorf("mmap wal: %w", err)
+	}
+	s.walIndexs = make([]*Index, 0)
+	bytebuf := bytes.NewBuffer(wal)
+	var curPos int64
+	for bytebuf.Len() > 0 {
+		// read ESCAPE or record length
+		length, err := s.readInt32(bytebuf)
+		if err != nil {
+			return fmt.Errorf("read record: %w", err)
+		}
+		curPos += SYNC_ESCAPE_SIZE
+		if length != SYNC_ESCAPE {
+			if initSync {
+				return ErrWalCorrupt
+			}
+			// next = index + value
+			next := bytebuf.Next(int(length))
+			if l := len(next); l == int(length) {
+				curPos += int64(l)
+				s.curIndex, err = s.readInt64(bytes.NewBuffer(next))
+				if err != nil {
+					return fmt.Errorf("read wal index: %w", err)
+				}
+				continue
+			}
+			return ErrWalCorrupt
+		}
+		sync := make([]byte, SYNC_HASH_SIZE)
+		n, err := bytebuf.Read(sync)
+		if err != nil || n < SYNC_HASH_SIZE {
+			return ErrWalCorrupt
+		}
+		curPos += SYNC_HASH_SIZE
+		if initSync {
+			s.meta.Sync = sync
+			initSync = false
+		} else {
+			for i, c := range s.meta.Sync {
+				if c != sync[i] {
+					return ErrWalCorrupt
+				}
+			}
+		}
+		s.lastSyncPos = curPos - SYNC_SIZE
+		index := Index{
+			Filename: "wal",
+			Seek:     s.lastSyncPos,
+			Index:    s.curIndex + 1,
+		}
+		s.walIndexs = append(s.walIndexs, &index)
+	}
 
 	// fl, err := ioutil.ReadDir(dataPath)
 	// if err != nil {
@@ -182,94 +237,147 @@ func (s *SeqFile) Init() error {
 }
 
 func (s *SeqFile) Read(index int64) ([]byte, error) {
-	if index < 1 {
-		return nil, fmt.Errorf("index should be [1, n]")
-	}
+	var (
+		block, blockNext *Index
+		isWAL            bool
+		err              error
+		f                *os.File
+		mapped           mmapgo.MMap
+		bytebuff         *bytes.Buffer
+		value            []byte
+		mapStart, mapEnd int
+		offStart, offEnd int
+	)
 
 	s.rwm.RLock()
-	if index < s.meta.MinIndex {
-		return nil, ErrIndexNotFound
+	if index < s.meta.MinIndex || index > s.curIndex {
+		err = ErrIndexNotFound
+		s.rwm.RUnlock()
+		return nil, err
 	}
 	// the target index is in wal
 	if s.meta.MaxIndex < index {
-		if int64(len(s.wal))+s.meta.MaxIndex < index {
-			return nil, ErrIndexNotFound
-		}
-		return s.wal[index-s.meta.MaxIndex], nil
+		block, blockNext, err = binarySearchIndex(s.walIndexs, index)
+		isWAL = true
+	} else {
+		block, blockNext, err = binarySearchIndex(s.meta.Indexs, index)
 	}
-	s.rwm.RUnlock()
-
-	var block, blockNext *Index
-	for _, i := range s.meta.Indexs {
-		if i.Index <= index {
-			block = i
-			continue
-		}
-		if i.Index > index {
-			blockNext = i
-			break
-		}
+	if !isWAL {
+		// if not wal, files can be read without a mutex
+		s.rwm.RUnlock()
+	}
+	if err != nil {
+		goto ERR
 	}
 
-	f, err := os.Open(filepath.Join(dataPath, block.Filename))
+	f, err = os.Open(filepath.Join(dataPath, block.Filename))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("the index file not exist")
+			err = fmt.Errorf("the index file not exist")
+			goto ERR
 		}
-		return nil, fmt.Errorf("read index file: %w", err)
-	}
-	msz := 0
-	if blockNext != nil {
-		msz, err = MmapSize(int(blockNext.Seek - block.Seek))
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		fstat, err := f.Stat()
-		if err != nil {
-			return nil, fmt.Errorf("read index stat: %w", err)
-		}
-		msz, err = MmapSize(int(fstat.Size() - block.Seek))
-		if err != nil {
-			return nil, err
-		}
+		err = fmt.Errorf("read index file: %w", err)
+		goto ERR
 	}
 
-	mapped, err := syscall.MmapOffset(int(f.Fd()), msz, block.Seek)
+	mapStart, err = MmapSizeFloor(int(block.Seek))
 	if err != nil {
-		return nil, fmt.Errorf("failed to perform mmap: %w", err)
+		goto ERR
 	}
-	bytebuff := bytes.NewBuffer(mapped)
-	var value []byte
+	offStart = int(block.Seek) - mapStart
+	if blockNext != nil && blockNext.Filename == block.Filename {
+		mapEnd, err = MmapSizeCeil(int(blockNext.Seek))
+		if err != nil {
+			goto ERR
+		}
+		offEnd = mapEnd - int(blockNext.Seek)
+	} else {
+		fstat, e := f.Stat()
+		if e != nil {
+			err = fmt.Errorf("read index stat: %w", e)
+			goto ERR
+		}
+		mapEnd = int(fstat.Size())
+	}
+
+	mapped, err = mmapgo.MapRegion(f, mapEnd-mapStart, mmapgo.RDONLY, 0, int64(mapStart))
+	if err != nil {
+		err = fmt.Errorf("failed to perform mmap: %w", err)
+		goto ERR
+	}
+	defer mapped.Unmap()
+	bytebuff = bytes.NewBuffer(mapped[offStart : len(mapped)-offEnd])
 	for bytebuff.Len() != 0 {
-		length, err := s.readRecordLength(bytebuff)
-		if err != nil {
-			return nil, fmt.Errorf("read record Length: %w", err)
+		length, e := s.readRecordLength(bytebuff)
+		if e != nil {
+			err = fmt.Errorf("read record Length: %w", e)
+			goto ERR
 		}
-		i, err := s.readInt64(bytebuff)
-		if err != nil {
-			return nil, fmt.Errorf("read index: %w", err)
+		i, e := s.readInt64(bytebuff)
+		if e != nil {
+			err = fmt.Errorf("read index: %w", e)
+			goto ERR
 		}
-		v := bytebuff.Next(int(length))
+		v := bytebuff.Next(int(length - 8))
 		if i == index {
 			if len(v) == int(length) {
 				copy(value, v)
+				if isWAL {
+					s.rwm.RUnlock()
+				}
 				return value, nil
 			}
-			return nil, ErrFileCorrupt
+			err = ErrFileCorrupt
+			goto ERR
 		}
 	}
-	return nil, ErrIndexNotFound
+	err = ErrIndexNotFound
+
+ERR:
+	if isWAL {
+		s.rwm.RUnlock()
+	}
+	return nil, err
 }
 
-func (s *SeqFile) Write(value []byte) (int, error) {
+func (s *SeqFile) Write(value []byte) (int64, error) {
+	if len(value) > DEFAULT_MAX_RECOED_SIZE {
+		return -1, ErrDataOversize
+	}
+	recordLength := len(value) + 8
+	recordLengthBytes, err := Int32ToBytes(int32(len(value)+8), s.endianOrder)
+	if err != nil {
+		return -1, fmt.Errorf("convert recordLength: %w", err)
+	}
 	s.rwm.Lock()
 	defer s.rwm.Unlock()
-	if len(s.wal) < DEFAULT_RECORD_SIZE && s.walSize < DEFAULT_BLOCK_SIZE {
-		s.wal = append(s.wal, value)
-		s.walSize += len(value) + 8 + 4
+	fs, err := s.walf.Stat()
+	if err != nil {
+		return -1, fmt.Errorf("read wal stat: %w", err)
 	}
-	//TODO
+	tail := fs.Size()
+	// TODO
+	// this block no space for this record, create new block
+	if s.blockRemain < len(value) {
+		// this file no space for new block
+		if tail+DEFAULT_BLOCK_SIZE > MAX_FILE_SIZE {
+			// mv wal data-xxx-xxx
+			// init wal
+		}
+		// sync()
+	}
+	// write value
+	index, err := Int64ToBytes(s.curIndex+1, s.endianOrder)
+	if err != nil {
+		return -1, fmt.Errorf("convert index: %w", err)
+	}
+	record := append(recordLengthBytes, index...)
+	record = append(record, value...)
+	err = s.writeWal(tail, value)
+	if err != nil {
+		return -1, fmt.Errorf("write wal: %w", err)
+	}
+	s.curIndex++
 	return -1, nil
 }
 
@@ -293,6 +401,77 @@ func (s *SeqFile) Write(value []byte) (int, error) {
 // 	}
 // 	return nil
 // }
+
+func (s *SeqFile) initWal() error {
+	walf, err := os.OpenFile(filepath.Join(dataPath, "wal"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("open wal file: %w", err)
+	}
+	s.walf = walf
+	if s.meta.Sync == nil {
+		s.meta.Sync = RandBytes(time.Now().UnixNano(), SYNC_HASH_SIZE)
+	}
+	s.lastSyncPos = -100
+	err = s.sync()
+	if err != nil {
+		return fmt.Errorf("sync data: %w", err)
+	}
+	return nil
+}
+
+func (s *SeqFile) sync() error {
+	// var tail int64
+	// if s.wal != nil {
+	// 	tail = int64(len(s.wal))
+	// 	if s.lastSyncPos >= tail-SYNC_SIZE {
+	// 		return nil
+	// 	}
+	// }
+	fs, err := s.walf.Stat()
+	if err != nil {
+		return fmt.Errorf("read wal stat: %w", err)
+	}
+	tail := fs.Size()
+	if s.lastSyncPos >= tail-SYNC_SIZE {
+		return nil
+	}
+	sync := make([]byte, SYNC_SIZE)
+	escape, err := Int32ToBytes(SYNC_ESCAPE, s.endianOrder)
+	if err != nil {
+		return fmt.Errorf("convert SYNC_ESCAPE: %w", err)
+	}
+	copy(sync[:SYNC_ESCAPE_SIZE], escape)
+	copy(sync[SYNC_ESCAPE_SIZE:], s.meta.Sync)
+
+	if err := s.writeWal(tail, sync); err != nil {
+		return fmt.Errorf("write wal: %w", err)
+	}
+
+	s.lastSyncPos = tail
+	s.blockRemain = DEFAULT_BLOCK_SIZE - SYNC_SIZE
+	index := Index{
+		Filename: "wal",
+		Seek:     int64(tail),
+		Index:    s.curIndex + 1,
+	}
+	s.walIndexs = append(s.walIndexs, &index)
+	return nil
+}
+
+func (s *SeqFile) writeWal(tail int64, record []byte) error {
+	err = s.walf.Truncate(tail + int64(len(record)))
+	if err != nil {
+		return fmt.Errorf("truncate wal: %w", err)
+	}
+	wal, err := mmapgo.Map(s.walf, mmapgo.RDWR, 0)
+	if err != nil {
+		return fmt.Errorf("mmap wal: %w", err)
+	}
+	defer wal.Unmap()
+	copy(wal[tail:], record)
+	wal.Flush()
+	return nil
+}
 
 func (s *SeqFile) readRecordLength(bytebuff *bytes.Buffer) (int32, error) {
 	length, err := s.readInt32(bytebuff)
@@ -319,20 +498,36 @@ func (s *SeqFile) readRecordLength(bytebuff *bytes.Buffer) (int32, error) {
 	return length, nil
 }
 
-func (s *SeqFile) readInt32(bytebuff *bytes.Buffer) (int32, error) {
+func (s *SeqFile) readInt32(bytebuf *bytes.Buffer) (int32, error) {
 	var data int32
-	if err := binary.Read(bytebuff, s.endianOrder, &data); err != nil {
+	if err := binary.Read(bytebuf, s.endianOrder, &data); err != nil {
 		return 0, fmt.Errorf("read int32: %w", err)
 	}
 	return data, nil
 }
 
-func (s *SeqFile) readInt64(bytebuff *bytes.Buffer) (int64, error) {
+func (s *SeqFile) readInt64(bytebuf *bytes.Buffer) (int64, error) {
 	var data int64
-	if err := binary.Read(bytebuff, s.endianOrder, &data); err != nil {
+	if err := binary.Read(bytebuf, s.endianOrder, &data); err != nil {
 		return 0, fmt.Errorf("read int64: %w", err)
 	}
 	return data, nil
+}
+
+func Int64ToBytes(data int64, order binary.ByteOrder) ([]byte, error) {
+	bytebuf := bytes.NewBuffer([]byte{})
+	if err := binary.Write(bytebuf, order, data); err != nil {
+		return nil, fmt.Errorf("convert int64 to bytes: %w", err)
+	}
+	return bytebuf.Bytes(), nil
+}
+
+func Int32ToBytes(data int32, order binary.ByteOrder) ([]byte, error) {
+	bytebuf := bytes.NewBuffer([]byte{})
+	if err := binary.Write(bytebuf, order, data); err != nil {
+		return nil, fmt.Errorf("convert int32 to bytes: %w", err)
+	}
+	return bytebuf.Bytes(), nil
 }
 
 // func (s *SeqFile) readInt32(mapped []byte) (int32, error) {
@@ -352,30 +547,73 @@ func IsLittleEndian() bool {
 	return (b == 0x04)
 }
 
-func MmapSize(size int) (int, error) {
+func MmapSizeCeil(size int) (int, error) {
+	return mmapSize(size, false)
+}
+
+func MmapSizeFloor(size int) (int, error) {
+	return mmapSize(size, true)
+}
+
+func mmapSize(size int, floor bool) (int, error) {
 	// Verify the requested size is not above the maximum allowed.
 	if size > MAX_FILE_SIZE {
-		return 0, fmt.Errorf("mmap too large")
+		return 0, fmt.Errorf("mmap too large, the MAX: %d", MAX_FILE_SIZE)
 	}
 
-	// Ensure that the mmap size is a multiple of the page size.
-	// This should always be true since we're incrementing in MBs.
+	// Verify the requested size is not above the maximum allowed.
+	if size <= 0 {
+		return 0, fmt.Errorf("mmap requires non-zero size")
+	}
+
 	pageSize := int64(os.Getpagesize())
 	sz := int64(size)
 	if (sz % pageSize) != 0 {
-		sz = ((sz / pageSize) + 1) * pageSize
+		if floor {
+			sz = (sz / pageSize) * pageSize
+		} else {
+			sz = ((sz / pageSize) + 1) * pageSize
+		}
 	}
 	return int(sz), nil
 }
 
+// alpha ignores 'l','o','I','O','0','1'
 var alpha = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
-// SRand generates a random string of fixed size.
-func SRand(seed int64, size int) []byte {
+// RandBytes generates a random string of fixed size.
+func RandBytes(seed int64, size int) []byte {
 	buf := make([]byte, size)
 	rand.Seed(seed)
 	for i := 0; i < size; i++ {
 		buf[i] = alpha[rand.Intn(len(alpha))]
 	}
 	return buf
+}
+
+func binarySearchIndex(indexs []*Index, index int64) (*Index, *Index, error) {
+	var low, high, mid int64
+	low = 0
+	high = int64(len(indexs)) - 1
+	if high < 0 {
+		return nil, nil, ErrEmptyIndexs
+	}
+	if index < indexs[0].Index {
+		return nil, nil, ErrIndexNotFound
+	}
+	if index >= indexs[high].Index {
+		return indexs[high], nil, nil
+	}
+	for low <= high {
+		mid = (high + low) / 2
+		if indexs[mid].Index == index || (high-low) < 2 {
+			break
+		}
+		if indexs[mid].Index > index {
+			high = mid
+		} else {
+			low = mid
+		}
+	}
+	return indexs[mid], indexs[mid+1], nil
 }
