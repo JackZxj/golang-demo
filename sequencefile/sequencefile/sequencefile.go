@@ -78,21 +78,26 @@ type SeqFile struct {
 	// wal  mmapgo.MMap
 	rwm sync.RWMutex
 
-	walIndexs   []*Index
-	lastSyncPos int64
-	curIndex    int64
-	blockRemain int
+	walIndexs       []*Index
+	lastSyncPos     int64
+	curIndex        int64
+	blockRemainSize int
+	blockRemainNum  int
 
+	closed      bool
+	wg          sync.WaitGroup
 	endianOrder binary.ByteOrder
 }
 
 var partitionRegex = regexp.MustCompile(`^p-.+`)
 var dataPath = "data"
 
+var ErrSeqFileClosed = errors.New("SeqFile has been closed")
 var ErrWalCorrupt = errors.New("wal is corrupt")
 var ErrFileCorrupt = errors.New("file is corrupt")
 var ErrIndexNotFound = errors.New("index not found")
 var ErrEmptyIndexs = errors.New("empty indexs")
+var ErrEmptyData = errors.New("empty data")
 var ErrDataOversize = errors.New(fmt.Sprintf("data over size, max size: %dbyte", DEFAULT_MAX_DATA_SIZE))
 
 func (s *SeqFile) Init() error {
@@ -108,6 +113,7 @@ func (s *SeqFile) Init() error {
 			return fmt.Errorf("create data path: %w", err)
 		}
 		s.curIndex = -1
+		s.meta.MaxIndex = -1
 		return s.initWal()
 	}
 
@@ -227,14 +233,24 @@ func (s *SeqFile) Read(index int64) ([]byte, error) {
 	)
 
 	s.rwm.RLock()
+	if s.closed {
+		s.rwm.RUnlock()
+		return nil, ErrSeqFileClosed
+	}
+	s.wg.Add(1)
+	defer s.wg.Done()
+
+	// fmt.Printf("%+v\n", s)
+
 	if index < s.meta.MinIndex || index > s.curIndex {
-		err = ErrIndexNotFound
+		err = fmt.Errorf("index too small or too large: %w", ErrIndexNotFound)
 		s.rwm.RUnlock()
 		return nil, err
 	}
 	// the target index is in wal
 	if s.meta.MaxIndex < index {
 		block, blockNext, err = binarySearchIndex(s.walIndexs, index)
+		// fmt.Println(*block)
 		isWAL = true
 	} else {
 		block, blockNext, err = binarySearchIndex(s.meta.Indexs, index)
@@ -283,6 +299,7 @@ func (s *SeqFile) Read(index int64) ([]byte, error) {
 		goto ERR
 	}
 	defer mapped.Unmap()
+	// fmt.Println(mapStart, mapEnd, offStart, offEnd, len(mapped), mapped)
 	bytebuff = bytes.NewBuffer(mapped[offStart : len(mapped)-offEnd])
 	for bytebuff.Len() != 0 {
 		length, e := s.readRecordLength(bytebuff)
@@ -290,14 +307,19 @@ func (s *SeqFile) Read(index int64) ([]byte, error) {
 			err = fmt.Errorf("read record Length: %w", e)
 			goto ERR
 		}
+		// fmt.Println("Record length", length)
 		i, e := s.readInt64(bytebuff)
 		if e != nil {
 			err = fmt.Errorf("read index: %w", e)
 			goto ERR
 		}
-		v := bytebuff.Next(int(length - 8))
+		// fmt.Println("index", i)
+		l := int(length - 8) // real record length
+		v := bytebuff.Next(l)
+		// fmt.Printf("value: %s\n", v)
 		if i == index {
-			if len(v) == int(length) {
+			if len(v) == l {
+				value = make([]byte, l)
 				copy(value, v)
 				if isWAL {
 					s.rwm.RUnlock()
@@ -318,6 +340,9 @@ ERR:
 }
 
 func (s *SeqFile) Write(value []byte) (int64, error) {
+	if len(value) == 0 {
+		return -1, ErrEmptyData
+	}
 	if len(value) > DEFAULT_MAX_DATA_SIZE {
 		return -1, ErrDataOversize
 	}
@@ -328,13 +353,18 @@ func (s *SeqFile) Write(value []byte) (int64, error) {
 	}
 	s.rwm.Lock()
 	defer s.rwm.Unlock()
+	if s.closed {
+		return -1, ErrSeqFileClosed
+	}
+	s.wg.Add(1)
+	defer s.wg.Done()
 	fs, err := s.walf.Stat()
 	if err != nil {
 		return -1, fmt.Errorf("read wal stat: %w", err)
 	}
 	tail := fs.Size()
 	// if this block has no space for this record, create new block
-	if s.blockRemain < recordLength+4 {
+	if s.blockRemainSize < recordLength+4 || s.blockRemainNum < 1 {
 		// if wal file has no space for new block
 		if tail+DEFAULT_BLOCK_SIZE > MAX_FILE_SIZE {
 			// mv wal data-xxx-xxx
@@ -378,11 +408,14 @@ func (s *SeqFile) Write(value []byte) (int64, error) {
 	}
 	record := append(recordLengthBytes, indexBytes...)
 	record = append(record, value...)
-	err = s.writeWal(tail, value)
+	// fmt.Println("got record:", record, "tail:", tail)
+	err = s.writeWal(tail, record)
 	if err != nil {
 		return -1, fmt.Errorf("write wal: %w", err)
 	}
 	s.curIndex++
+	s.blockRemainNum--
+	// fmt.Println("block status:", s.blockRemainSize, s.blockRemainNum)
 	return s.curIndex, nil
 }
 
@@ -392,7 +425,14 @@ func (s *SeqFile) Size() uint64 {
 }
 
 func (s *SeqFile) Close() error {
-	// TODO
+	s.rwm.Lock()
+	defer s.rwm.Unlock()
+	s.closed = true
+	s.wg.Wait()
+	err := s.walf.Close()
+	if err != nil {
+		return fmt.Errorf("unexpect error when closing wal file")
+	}
 	return nil
 }
 
@@ -442,7 +482,8 @@ func (s *SeqFile) sync() error {
 	}
 
 	s.lastSyncPos = tail
-	s.blockRemain = DEFAULT_BLOCK_SIZE - SYNC_SIZE
+	s.blockRemainSize = DEFAULT_BLOCK_SIZE - SYNC_SIZE
+	s.blockRemainNum = DEFAULT_RECORD_NUM_IN_BLOCK
 	index := Index{
 		Filename: "wal",
 		Seek:     int64(tail),
@@ -463,6 +504,7 @@ func (s *SeqFile) writeWal(tail int64, record []byte) error {
 	}
 	defer wal.Unmap()
 	copy(wal[tail:], record)
+	// fmt.Printf("wal length: %d, wal value: %v, len: %d\n", len(wal), wal, tail+int64(len(record)))
 	wal.Flush()
 	return nil
 }
@@ -513,6 +555,7 @@ func Int64ToBytes(data int64, order binary.ByteOrder) ([]byte, error) {
 	if err := binary.Write(bytebuf, order, data); err != nil {
 		return nil, fmt.Errorf("convert int64 to bytes: %w", err)
 	}
+	// fmt.Println("Int64ToBytes", data, bytebuf.Bytes())
 	return bytebuf.Bytes(), nil
 }
 
@@ -521,6 +564,7 @@ func Int32ToBytes(data int32, order binary.ByteOrder) ([]byte, error) {
 	if err := binary.Write(bytebuf, order, data); err != nil {
 		return nil, fmt.Errorf("convert int32 to bytes: %w", err)
 	}
+	// fmt.Println("Int32ToBytes", data, bytebuf.Bytes())
 	return bytebuf.Bytes(), nil
 }
 
@@ -556,11 +600,17 @@ func mmapSize(size int, floor bool) (int, error) {
 	}
 
 	// Verify the requested size is not above the maximum allowed.
-	if size <= 0 {
-		return 0, fmt.Errorf("mmap requires non-zero size")
+	if size < 0 {
+		return 0, fmt.Errorf("mmap requires non-negative size, but got: %d", size)
 	}
 
 	pageSize := int64(os.Getpagesize())
+	if size == 0 {
+		if floor {
+			return 0, nil
+		}
+		return int(pageSize), nil
+	}
 	sz := int64(size)
 	if (sz % pageSize) != 0 {
 		if floor {
@@ -589,6 +639,7 @@ func binarySearchIndex(indexs []*Index, index int64) (*Index, *Index, error) {
 	var low, high, mid int64
 	low = 0
 	high = int64(len(indexs)) - 1
+	// fmt.Println("low and high:", low, high)
 	if high < 0 {
 		return nil, nil, ErrEmptyIndexs
 	}
