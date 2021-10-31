@@ -16,7 +16,6 @@ import (
 	"regexp"
 	"sync"
 
-	"github.com/JackZxj/golang-demo/sequencefile/syscall"
 	mmapgo "github.com/edsrzf/mmap-go"
 )
 
@@ -37,7 +36,7 @@ const SYNC_HASH_SIZE = 16
 // SYNC_SIZE means escape + hash
 const SYNC_SIZE = SYNC_ESCAPE_SIZE + SYNC_HASH_SIZE
 
-const DEFAULT_MAX_RECOED_SIZE = DEFAULT_BLOCK_SIZE - SYNC_SIZE - 4 - 8
+const DEFAULT_MAX_DATA_SIZE = DEFAULT_BLOCK_SIZE - SYNC_SIZE - 4 - 8
 
 /*
  4byte    16byte      4byte           8byte   n1 byte 4byte           8byte   n2 byte  ...  4byte           8byte   n3 byte
@@ -57,7 +56,6 @@ type SeqFiler interface {
 	// write a byte slice, returns index or error
 	Write(value []byte) (int64, error)
 	Size() uint64
-	Flush() error
 	Close() error
 }
 
@@ -95,7 +93,7 @@ var ErrWalCorrupt = errors.New("wal is corrupt")
 var ErrFileCorrupt = errors.New("file is corrupt")
 var ErrIndexNotFound = errors.New("index not found")
 var ErrEmptyIndexs = errors.New("empty indexs")
-var ErrDataOversize = errors.New(fmt.Sprintf("data over size, max size: %dbyte", DEFAULT_MAX_RECOED_SIZE))
+var ErrDataOversize = errors.New(fmt.Sprintf("data over size, max size: %dbyte", DEFAULT_MAX_DATA_SIZE))
 
 func (s *SeqFile) Init() error {
 	if IsLittleEndian() {
@@ -212,27 +210,6 @@ INIT_WAL:
 		}
 		s.walIndexs = append(s.walIndexs, &index)
 	}
-
-	// fl, err := ioutil.ReadDir(dataPath)
-	// if err != nil {
-	// 	return fmt.Errorf("read data path: %w", err)
-	// }
-	// errs := []error{}
-	// for i := range fl {
-	// 	name := fl[i].Name()
-	// 	if fl[i].IsDir() || name == "meta.json" || !partitionRegex.MatchString(name) {
-	// 		continue
-	// 	}
-	// 	pf, err := os.Open(filepath.Join(dataPath, name))
-	// 	if err != nil {
-	// 		errs = append(errs, err)
-	// 		continue
-	// 	}
-	// 	s.files[name] = pf
-	// }
-	// if len(errs) > 0 {
-	// 	return fmt.Errorf("open partition: %v", errs)
-	// }
 	return nil
 }
 
@@ -341,11 +318,11 @@ ERR:
 }
 
 func (s *SeqFile) Write(value []byte) (int64, error) {
-	if len(value) > DEFAULT_MAX_RECOED_SIZE {
+	if len(value) > DEFAULT_MAX_DATA_SIZE {
 		return -1, ErrDataOversize
 	}
 	recordLength := len(value) + 8
-	recordLengthBytes, err := Int32ToBytes(int32(len(value)+8), s.endianOrder)
+	recordLengthBytes, err := Int32ToBytes(int32(recordLength), s.endianOrder)
 	if err != nil {
 		return -1, fmt.Errorf("convert recordLength: %w", err)
 	}
@@ -356,51 +333,68 @@ func (s *SeqFile) Write(value []byte) (int64, error) {
 		return -1, fmt.Errorf("read wal stat: %w", err)
 	}
 	tail := fs.Size()
-	// TODO
-	// this block no space for this record, create new block
-	if s.blockRemain < len(value) {
-		// this file no space for new block
+	// if this block has no space for this record, create new block
+	if s.blockRemain < recordLength+4 {
+		// if wal file has no space for new block
 		if tail+DEFAULT_BLOCK_SIZE > MAX_FILE_SIZE {
 			// mv wal data-xxx-xxx
+			newFile := fmt.Sprintf("p-%d-%d", s.meta.MaxIndex+1, s.curIndex)
+			err := os.Rename(filepath.Join(dataPath, "wal"), filepath.Join(dataPath, newFile))
+			if err != nil {
+				return -1, fmt.Errorf("mv wal to new data file: %w", err)
+			}
+			for i := range s.walIndexs {
+				s.walIndexs[i].Filename = newFile
+			}
+			s.meta.Indexs = append(s.meta.Indexs, s.walIndexs...)
+			s.meta.MaxIndex = s.curIndex
+			b, err := json.Marshal(&s.meta)
+			if err != nil {
+				return -1, fmt.Errorf("failed to encode metadata: %w", err)
+			}
+			metaPath := filepath.Join(dataPath, "meta.json")
+			if err := os.WriteFile(metaPath, b, 511); err != nil {
+				return -1, fmt.Errorf("failed to write metadata to %s: %w", metaPath, err)
+			}
 			// init wal
+			s.walIndexs = make([]*Index, 0)
+			err = s.initWal()
+			if err != nil {
+				return -1, fmt.Errorf("init wal: %w", err)
+			}
+		} else {
+			// sync()
+			s.sync()
+			if err != nil {
+				return -1, fmt.Errorf("sync block: %w", err)
+			}
 		}
-		// sync()
 	}
 	// write value
-	index, err := Int64ToBytes(s.curIndex+1, s.endianOrder)
+	// convert index to bytes
+	indexBytes, err := Int64ToBytes(s.curIndex+1, s.endianOrder)
 	if err != nil {
 		return -1, fmt.Errorf("convert index: %w", err)
 	}
-	record := append(recordLengthBytes, index...)
+	record := append(recordLengthBytes, indexBytes...)
 	record = append(record, value...)
 	err = s.writeWal(tail, value)
 	if err != nil {
 		return -1, fmt.Errorf("write wal: %w", err)
 	}
 	s.curIndex++
-	return -1, nil
+	return s.curIndex, nil
 }
 
-// func (s *SeqFile) checkSync(bytebuff *bytes.Buffer) error {
-// 	length, err := s.readInt32(bytebuff)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if length != SYNC_ESCAPE {
-// 		return errors.New("cannot find a SYNC_ESCAPE")
-// 	}
-// 	var tmpSync [SYNC_HASH_SIZE]byte
-// 	n, err := bytebuff.Read(tmpSync[:])
-// 	if err != nil || n < SYNC_HASH_SIZE {
-// 		return ErrFileCorrupt
-// 	}
-// 	for i, c := range s.meta.Sync {
-// 		if c != tmpSync[i] {
-// 			return ErrFileCorrupt
-// 		}
-// 	}
-// 	return nil
-// }
+func (s *SeqFile) Size() uint64 {
+	// TODO
+	return 0
+}
+
+func (s *SeqFile) Close() error {
+	// TODO
+	return nil
+}
 
 func (s *SeqFile) initWal() error {
 	walf, err := os.OpenFile(filepath.Join(dataPath, "wal"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
@@ -459,7 +453,7 @@ func (s *SeqFile) sync() error {
 }
 
 func (s *SeqFile) writeWal(tail int64, record []byte) error {
-	err = s.walf.Truncate(tail + int64(len(record)))
+	err := s.walf.Truncate(tail + int64(len(record)))
 	if err != nil {
 		return fmt.Errorf("truncate wal: %w", err)
 	}
