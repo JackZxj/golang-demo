@@ -98,7 +98,7 @@ var ErrFileCorrupt = errors.New("file is corrupt")
 var ErrIndexNotFound = errors.New("index not found")
 var ErrEmptyIndexs = errors.New("empty indexs")
 var ErrEmptyData = errors.New("empty data")
-var ErrDataOversize = errors.New(fmt.Sprintf("data over size, max size: %dbyte", DEFAULT_MAX_DATA_SIZE))
+var ErrDataOversize = fmt.Errorf("data over size, max size: %dbyte", DEFAULT_MAX_DATA_SIZE)
 
 func (s *SeqFile) Init() error {
 	if IsLittleEndian() {
@@ -299,7 +299,7 @@ func (s *SeqFile) Read(index int64) ([]byte, error) {
 		goto ERR
 	}
 	defer mapped.Unmap()
-	// fmt.Println(mapStart, mapEnd, offStart, offEnd, len(mapped), mapped)
+	// fmt.Println("read", index, "from", f.Name(), ": ", mapStart, mapEnd, offStart, offEnd, len(mapped))
 	bytebuff = bytes.NewBuffer(mapped[offStart : len(mapped)-offEnd])
 	for bytebuff.Len() != 0 {
 		length, e := s.readRecordLength(bytebuff)
@@ -383,7 +383,7 @@ func (s *SeqFile) Write(value []byte) (int64, error) {
 				return -1, fmt.Errorf("failed to encode metadata: %w", err)
 			}
 			metaPath := filepath.Join(dataPath, "meta.json")
-			if err := os.WriteFile(metaPath, b, 511); err != nil {
+			if err := os.WriteFile(metaPath, b, 0644); err != nil {
 				return -1, fmt.Errorf("failed to write metadata to %s: %w", metaPath, err)
 			}
 			// init wal
@@ -399,6 +399,12 @@ func (s *SeqFile) Write(value []byte) (int64, error) {
 				return -1, fmt.Errorf("sync block: %w", err)
 			}
 		}
+		// wal file has been updated, need to get the latest tail position
+		fs, err = s.walf.Stat()
+		if err != nil {
+			return -1, fmt.Errorf("read wal stat: %w", err)
+		}
+		tail = fs.Size()
 	}
 	// write value
 	// convert index to bytes
@@ -454,13 +460,6 @@ func (s *SeqFile) initWal() error {
 }
 
 func (s *SeqFile) sync() error {
-	// var tail int64
-	// if s.wal != nil {
-	// 	tail = int64(len(s.wal))
-	// 	if s.lastSyncPos >= tail-SYNC_SIZE {
-	// 		return nil
-	// 	}
-	// }
 	fs, err := s.walf.Stat()
 	if err != nil {
 		return fmt.Errorf("read wal stat: %w", err)
@@ -477,12 +476,13 @@ func (s *SeqFile) sync() error {
 	copy(sync[:SYNC_ESCAPE_SIZE], escape)
 	copy(sync[SYNC_ESCAPE_SIZE:], s.meta.Sync)
 
+	s.blockRemainSize = DEFAULT_BLOCK_SIZE
 	if err := s.writeWal(tail, sync); err != nil {
 		return fmt.Errorf("write wal: %w", err)
 	}
 
 	s.lastSyncPos = tail
-	s.blockRemainSize = DEFAULT_BLOCK_SIZE - SYNC_SIZE
+	// s.blockRemainSize = DEFAULT_BLOCK_SIZE - SYNC_SIZE
 	s.blockRemainNum = DEFAULT_RECORD_NUM_IN_BLOCK
 	index := Index{
 		Filename: "wal",
@@ -506,6 +506,7 @@ func (s *SeqFile) writeWal(tail int64, record []byte) error {
 	copy(wal[tail:], record)
 	// fmt.Printf("wal length: %d, wal value: %v, len: %d\n", len(wal), wal, tail+int64(len(record)))
 	wal.Flush()
+	s.blockRemainSize -= len(record)
 	return nil
 }
 
@@ -522,12 +523,14 @@ func (s *SeqFile) readRecordLength(bytebuff *bytes.Buffer) (int32, error) {
 	if err != nil || n < SYNC_HASH_SIZE {
 		return -1, ErrFileCorrupt
 	}
+	// fmt.Printf("sync[len: %d]: %q\n", length, tmpSync)
 	for i, c := range s.meta.Sync {
 		if c != tmpSync[i] {
 			return -1, ErrFileCorrupt
 		}
 	}
 	length, err = s.readInt32(bytebuff)
+	// fmt.Println("got length:", length)
 	if err != nil {
 		return -1, fmt.Errorf("read record: %w", err)
 	}
@@ -568,15 +571,6 @@ func Int32ToBytes(data int32, order binary.ByteOrder) ([]byte, error) {
 	return bytebuf.Bytes(), nil
 }
 
-// func (s *SeqFile) readInt32(mapped []byte) (int32, error) {
-// 	bytebuff := bytes.NewBuffer(mapped)
-// 	var data int32
-// 	if err := binary.Read(bytebuff, s.endianOrder, &data); err != nil {
-// 		return 0, fmt.Errorf("read int32: %w", err)
-// 	}
-// 	return data, nil
-// }
-
 func IsLittleEndian() bool {
 	var i int32 = 0x01020304
 	u := unsafe.Pointer(&i)
@@ -594,12 +588,10 @@ func MmapSizeFloor(size int) (int, error) {
 }
 
 func mmapSize(size int, floor bool) (int, error) {
-	// Verify the requested size is not above the maximum allowed.
 	if size > MAX_FILE_SIZE {
-		return 0, fmt.Errorf("mmap too large, the MAX: %d", MAX_FILE_SIZE)
+		return 0, fmt.Errorf("mmap too large, the MAX size: %d, but got: %d", MAX_FILE_SIZE, size)
 	}
 
-	// Verify the requested size is not above the maximum allowed.
 	if size < 0 {
 		return 0, fmt.Errorf("mmap requires non-negative size, but got: %d", size)
 	}

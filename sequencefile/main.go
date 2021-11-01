@@ -12,12 +12,16 @@ import (
 )
 
 func main() {
-	RWR()
+	// RWR()
+	// RWRR()
+	SWSR()
 }
+
+var msg = `hello world, i am %d. 这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...`
 
 func RWR() {
 	var s sequencefile.SeqFile
-	os.RemoveAll("data")
+	// os.RemoveAll("data")
 	s.Init()
 	defer s.Close()
 	var wg sync.WaitGroup
@@ -27,7 +31,7 @@ func RWR() {
 		if r < 0.6 {
 			go func(i int) {
 				defer wg.Done()
-				index, err := s.Write([]byte(fmt.Sprintf("hello world, i am %d. 这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...这篇文章将介绍Golang并发编程中常用到一种编程模式:context。本文将从为什么需要context出发,深入了解context的实现原理,以及了解如何使用context。 为什么需要context 在并发程序...", i)))
+				index, err := s.Write([]byte(fmt.Sprintf(msg, i)))
 				if err != nil {
 					log.Fatalf("write: %v", err)
 				}
@@ -44,8 +48,8 @@ func RWR() {
 				}
 				fmt.Println("oversize:", i)
 			}
-			log.Printf("######read %d: %q\n", i, b)
-		}(int64(i) / 10)
+			log.Printf("######read %d: %d\n", i, len(b))
+		}(int64(i))
 	}
 	wg.Wait()
 }
@@ -60,7 +64,7 @@ func RWRR() {
 	for i := 0; i < 200; i++ {
 		go func(i int) {
 			defer wg.Done()
-			index, err := s.Write([]byte(fmt.Sprintf("hello world, i am %d", i)))
+			index, err := s.Write([]byte(fmt.Sprintf(msg, i)))
 			if err != nil {
 				log.Fatalf("write: %v", err)
 			}
@@ -76,7 +80,7 @@ func RWRR() {
 			if err != nil {
 				log.Fatalf("read: %v", err)
 			}
-			log.Printf("######read %d: %q\n", i, b)
+			log.Printf("######read %d: %d\n", i, len(b))
 		}(i)
 	}
 	wg.Wait()
@@ -86,10 +90,10 @@ func RWRR() {
 
 func SWSR() {
 	var s sequencefile.SeqFile
-	os.RemoveAll("data")
+	// os.RemoveAll("data")
 	s.Init()
 	for i := 0; i < 200; i++ {
-		index, err := s.Write([]byte(fmt.Sprintf("hello world, i am %d", i)))
+		index, err := s.Write([]byte(fmt.Sprintf(msg, i)))
 		if err != nil {
 			log.Fatalf("write: %v", err)
 		}
@@ -100,7 +104,7 @@ func SWSR() {
 		if err != nil {
 			log.Fatalf("read: %v", err)
 		}
-		log.Printf("######read: %q\n", b)
+		log.Printf("######read %d: %d\n", i, len(b))
 	}
 	s.Close()
 }
