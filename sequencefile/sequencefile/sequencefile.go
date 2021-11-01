@@ -153,7 +153,7 @@ func (s *SeqFile) Init() error {
 
 INIT_WAL:
 	// read wal
-	walf, err := os.OpenFile(filepath.Join(dataPath, "wal"), os.O_RDWR|os.O_APPEND, 0644)
+	walf, err := os.OpenFile(filepath.Join(dataPath, "wal"), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return s.initWal()
@@ -293,6 +293,7 @@ func (s *SeqFile) Read(index int64) ([]byte, error) {
 		mapEnd = int(fstat.Size())
 	}
 
+	// fmt.Println("read", index, "from", f.Name(), ": ", mapStart, mapEnd, offStart, offEnd)
 	mapped, err = mmapgo.MapRegion(f, mapEnd-mapStart, mmapgo.RDONLY, 0, int64(mapStart))
 	if err != nil {
 		err = fmt.Errorf("failed to perform mmap: %w", err)
@@ -443,7 +444,7 @@ func (s *SeqFile) Close() error {
 }
 
 func (s *SeqFile) initWal() error {
-	walf, err := os.OpenFile(filepath.Join(dataPath, "wal"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	walf, err := os.OpenFile(filepath.Join(dataPath, "wal"), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return fmt.Errorf("open wal file: %w", err)
 	}
@@ -585,33 +586,6 @@ func MmapSizeCeil(size int) (int, error) {
 
 func MmapSizeFloor(size int) (int, error) {
 	return mmapSize(size, true)
-}
-
-func mmapSize(size int, floor bool) (int, error) {
-	if size > MAX_FILE_SIZE {
-		return 0, fmt.Errorf("mmap too large, the MAX size: %d, but got: %d", MAX_FILE_SIZE, size)
-	}
-
-	if size < 0 {
-		return 0, fmt.Errorf("mmap requires non-negative size, but got: %d", size)
-	}
-
-	pageSize := int64(os.Getpagesize())
-	if size == 0 {
-		if floor {
-			return 0, nil
-		}
-		return int(pageSize), nil
-	}
-	sz := int64(size)
-	if (sz % pageSize) != 0 {
-		if floor {
-			sz = (sz / pageSize) * pageSize
-		} else {
-			sz = ((sz / pageSize) + 1) * pageSize
-		}
-	}
-	return int(sz), nil
 }
 
 // alpha ignores 'l','o','I','O','0','1'
