@@ -2,6 +2,7 @@ package sequencefile
 
 import (
 	"errors"
+	"os"
 	"testing"
 )
 
@@ -52,3 +53,76 @@ func TestBinarySearchIndex(t *testing.T) {
 		}
 	}
 }
+
+func benchmarkWriteLength(b *testing.B, msgLength int) {
+	var s SeqFile
+	os.RemoveAll("data")
+	defer os.RemoveAll("data")
+	s.Init()
+	defer s.Close()
+	msg := RandBytes(int64(msgLength), msgLength)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := s.Write(msg)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+}
+
+// BenchmarkWrite100 writes messages with a size of 100 bytes
+func BenchmarkWrite100(b *testing.B) {
+	benchmarkWriteLength(b, 100)
+}
+
+// BenchmarkWrite1k writes messages with a size of 1000 bytes
+func BenchmarkWrite1k(b *testing.B) {
+	benchmarkWriteLength(b, 1000)
+}
+
+// BenchmarkWrite10k writes messages with a size of 10,000 bytes (10kb)
+func BenchmarkWrite10k(b *testing.B) {
+	benchmarkWriteLength(b, 10000)
+}
+
+// BenchmarkWrite100k writes messages with a size of 100,000 bytes (100kb)
+func BenchmarkWrite100k(b *testing.B) {
+	benchmarkWriteLength(b, 10000)
+}
+
+func benchmarkParallelWriteLength(b *testing.B, msgLength int) {
+	var s SeqFile
+	os.RemoveAll("data")
+	defer os.RemoveAll("data")
+	s.Init()
+	defer s.Close()
+	msg := RandBytes(int64(msgLength), msgLength)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, err := s.Write(msg)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.StopTimer()
+}
+
+func BenchmarkParallelWrite100(b *testing.B) {
+	benchmarkParallelWriteLength(b, 100)
+}
+
+func BenchmarkParallelWrite1k(b *testing.B) {
+	benchmarkParallelWriteLength(b, 1000)
+}
+
+func BenchmarkParallelWrite10k(b *testing.B) {
+	benchmarkParallelWriteLength(b, 10000)
+}
+
+func BenchmarkParallelWrite100k(b *testing.B) {
+	benchmarkParallelWriteLength(b, 100000)
+}
+
