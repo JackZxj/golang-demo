@@ -11,7 +11,8 @@ func main() {
 	// TestStruct()
 	// TestStu()
 	// TestStructMerge()
-	TestNoJsonInline()
+	// TestNoJsonInline()
+	TestEncodeBytes()
 }
 
 type Project struct {
@@ -185,4 +186,15 @@ func TestNoJsonInline() {
 	h := HHH{HH{"1", "2"}, "3"}
 	v, _ := json.Marshal(h)
 	fmt.Println(string(v)) // {"h1":"1","h2":"2","h3":"3"}
+}
+
+func TestEncodeBytes() {
+	type Bytes struct {
+		Value []byte `json:"value"` // []byte默认会被base64编码
+	}
+	b := Bytes{Value: []byte{'a', 'b', 'c'}}
+	v, _ := json.Marshal(b)
+	fmt.Println(string(v)) // {"value":"YWJj"}
+	json.Unmarshal(v, &b)
+	fmt.Println(b) // {[97 98 99]} // ascii a,b,c
 }
