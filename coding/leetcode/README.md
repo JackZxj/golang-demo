@@ -10,3 +10,4 @@
 
 [977. 有序数组的平方](https://leetcode-cn.com/problems/squares-of-a-sorted-array/) [answer](./0977/main.go)
 [189. 轮转数组](https://leetcode-cn.com/problems/rotate-array/) [answer](./0189/main.go)
+[283. 移动零](https://leetcode-cn.com/problems/move-zeroes/) [answer](./0283/main.go)
