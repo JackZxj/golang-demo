@@ -14,3 +14,5 @@
 * [167. 两数之和 II - 输入有序数组](https://leetcode-cn.com/problems/two-sum-ii-input-array-is-sorted/) [answer](./0167/main.go) ⭐
 * [344. 反转字符串](https://leetcode-cn.com/problems/reverse-string/) [answer](./0344/main.go)
 * [557. 反转字符串中的单词 III](https://leetcode-cn.com/problems/reverse-words-in-a-string-iii/) [answer](./0557/main.go)
+* [876. 链表的中间结点](https://leetcode-cn.com/problems/middle-of-the-linked-list/) [answer](./0876/main.go)
+* [19. 删除链表的倒数第 N 个结点](https://leetcode-cn.com/problems/remove-nth-node-from-end-of-list/) [answer](./0019/main.go)
