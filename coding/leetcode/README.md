@@ -28,5 +28,5 @@
 * [695. 岛屿的最大面积](https://leetcode-cn.com/problems/max-area-of-island/) [answer](./0695/main.go)
 * [617. 合并二叉树](https://leetcode-cn.com/problems/merge-two-binary-trees/) [answer](./617/main.go) ⭐ (题目难度较低，写main函数难度较高： slice <-> tree)
 * [116. 填充每个节点的下一个右侧节点指针](https://leetcode-cn.com/problems/populating-next-right-pointers-in-each-node/) [answer](./0116/main.go)
-* ~~[542. 01 矩阵](https://leetcode-cn.com/problems/01-matrix/) [answer](./0542/main.go)~~
-
+* [542. 01 矩阵](https://leetcode-cn.com/problems/01-matrix/) [answer](./0542/main.go) ⭐ (bfs 超级初始节点)
+* [994. 腐烂的橘子](https://leetcode-cn.com/problems/rotting-oranges/) [answer](./0994/main.go)
