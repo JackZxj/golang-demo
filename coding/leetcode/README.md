@@ -38,3 +38,16 @@
 * [77. 组合](https://leetcode-cn.com/problems/combinations/) [answer](./0077/main.go)
 * [46. 全排列](https://leetcode-cn.com/problems/permutations/) [answer](./0046/main.go)
 * [784. 字母大小写全排列](https://leetcode-cn.com/problems/letter-case-permutation/) [answer](./0784/main.go)
+
+## 动态规划
+
+* [70. 爬楼梯](https://leetcode-cn.com/problems/climbing-stairs/) [answer](./0070/main.go)
+* [198. 打家劫舍](https://leetcode-cn.com/problems/house-robber/) [answer](./0198/main.go)
+* [120. 三角形最小路径和](https://leetcode-cn.com/problems/triangle/) [answer](./0120/main.go)
+
+## 位运算
+
+* [231. 2 的幂](https://leetcode-cn.com/problems/power-of-two/) [answer](./0231/main.go) (与运算)
+* [191. 位1的个数](https://leetcode-cn.com/problems/number-of-1-bits/) [answer](./0191/main.go)
+* [190. 颠倒二进制位](https://leetcode-cn.com/problems/reverse-bits/) [answer](./0190/main.go)
+* [136. 只出现一次的数字](https://leetcode-cn.com/problems/single-number/) [answer](./0136/main.go) ⭐ (异或运算)
