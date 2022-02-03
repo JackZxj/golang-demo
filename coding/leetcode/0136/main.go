@@ -20,6 +20,13 @@ func main() {
 }
 
 func singleNumber(nums []int) (out int) {
+	for _, i := range nums {
+		out ^= i
+	}
+	return
+}
+
+func singleNumber2(nums []int) (out int) {
 	for i := range nums {
 		out ^= nums[i]
 	}

@@ -5,6 +5,11 @@
 * [704. 二分查找](https://leetcode-cn.com/problems/binary-search/) [answer](./0704/main.go)
 * [278. 第一个错误的版本](https://leetcode-cn.com/problems/first-bad-version/) [answer](./0278/main.go)
 * [35. 搜索插入位置](https://leetcode-cn.com/problems/search-insert-position/) [answer](./0035/main.go)
+* [34. 在排序数组中查找元素的第一个和最后一个位置](https://leetcode-cn.com/problems/find-first-and-last-position-of-element-in-sorted-array/) [answer](./0034/main.go)
+* [33. 搜索旋转排序数组](https://leetcode-cn.com/problems/search-in-rotated-sorted-array/) [answer](./0033/main.go)
+* [74. 搜索二维矩阵](https://leetcode-cn.com/problems/search-a-2d-matrix/) [answer](./0074/main.go)
+* [153. 寻找旋转排序数组中的最小值](https://leetcode-cn.com/problems/find-minimum-in-rotated-sorted-array/) [answer](./0153/main.go)
+* [162. 寻找峰值](https://leetcode-cn.com/problems/find-peak-element/) [answer](./0162/main.go)
 
 ## 双指针
 
@@ -16,11 +21,19 @@
 * [557. 反转字符串中的单词 III](https://leetcode-cn.com/problems/reverse-words-in-a-string-iii/) [answer](./0557/main.go)
 * [876. 链表的中间结点](https://leetcode-cn.com/problems/middle-of-the-linked-list/) [answer](./0876/main.go)
 * [19. 删除链表的倒数第 N 个结点](https://leetcode-cn.com/problems/remove-nth-node-from-end-of-list/) [answer](./0019/main.go)
+* [82. 删除排序链表中的重复元素 II](https://leetcode-cn.com/problems/remove-duplicates-from-sorted-list-ii/) [answer](./0082/main.go)
+* [15. 三数之和](https://leetcode-cn.com/problems/3sum/) [answer](./0015/main.go)
+* [844. 比较含退格的字符串](https://leetcode-cn.com/problems/backspace-string-compare/) [answer](./0844/main.go)
+* [986. 区间列表的交集](https://leetcode-cn.com/problems/interval-list-intersections/) [answer](./0986/main.go)
+* [11. 盛最多水的容器](https://leetcode-cn.com/problems/container-with-most-water/) [answer](./0011/main.go)
 
 ## 滑动窗口
 
 * [3. 无重复字符的最长子串](https://leetcode-cn.com/problems/longest-substring-without-repeating-characters/) [answer](./0003/main.go) ⭐
 * [567. 字符串的排列](https://leetcode-cn.com/problems/permutation-in-string/) [answer](./0567/main.go) ⭐
+* [438. 找到字符串中所有字母异位词](https://leetcode-cn.com/problems/find-all-anagrams-in-a-string/) [answer](./0438/main.go)
+* [713. 乘积小于K的子数组](https://leetcode-cn.com/problems/subarray-product-less-than-k/) [answer](./0713/main.go)
+* [209. 长度最小的子数组](https://leetcode-cn.com/problems/minimum-size-subarray-sum/) [answer](./0209/main.go)
 
 ## DFS/BFS
 
@@ -30,6 +43,8 @@
 * [116. 填充每个节点的下一个右侧节点指针](https://leetcode-cn.com/problems/populating-next-right-pointers-in-each-node/) [answer](./0116/main.go)
 * [542. 01 矩阵](https://leetcode-cn.com/problems/01-matrix/) [answer](./0542/main.go) ⭐ (bfs 超级初始节点)
 * [994. 腐烂的橘子](https://leetcode-cn.com/problems/rotting-oranges/) [answer](./0994/main.go)
+* [200. 岛屿数量](https://leetcode-cn.com/problems/number-of-islands/) [answer](./0200/main.go)
+* [547. 省份数量](https://leetcode-cn.com/problems/number-of-provinces/) [answer](./0547/main.go)
 
 ## 递归 / 回溯
 
