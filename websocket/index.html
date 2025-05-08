@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Stream from WebSocket</title>
+</head>
+
+<body>
+    <h1>H.264 Video Stream</h1>
+    <!-- <video id="videoStream" controls autoplay></video> -->
+    <div>
+        大小:
+        <input type="range" min="0.3" max="2" value="0.5" step="0.1" id="zoom">
+        <span id="rangeValue">0.5x</span>
+    </div>
+
+    <canvas id="videoCanvas"></canvas>
+
+    <script>
+        const currentUrl = window.location.href;
+        const domain = new URL(currentUrl).hostname;
+        const currentPort = new URL(currentUrl).port;
+        const port = (currentPort == 80 || currentPort == 443 || currentPort == "") ? "" : `:${currentPort}`;
+        const protocol = new URL(currentUrl).protocol == 'https:' ? 'wss:' : 'ws:';
+        // const videoElement = document.getElementById('videoStream');
+        const socket = new WebSocket(`${protocol}//${domain}${port}/read-stream`);  // 替换为实际的 WebSocket URI
+
+        const canvas = document.getElementById('videoCanvas');
+        const ctx = canvas.getContext('2d');
+        const zoomSlider = document.getElementById('zoom');
+        const rangeValue = document.getElementById('rangeValue');
+        zoomSlider.addEventListener('input', function () {
+            rangeValue.textContent = this.value + 'x';
+        });
+
+        socket.addEventListener('message', event => {
+            // 将接收到的二进制数据转换为 Blob
+            const blob = new Blob([event.data], { type: 'image/jpeg' });
+            const img = new Image();
+
+            img.onload = function () {
+                let zoom = zoomSlider.value;
+                canvas.width = img.width * zoom;
+                canvas.height = img.height * zoom;
+                // 将图片绘制到画布上
+                ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
+            };
+
+            img.src = URL.createObjectURL(blob);
+
+            // 创建一个 URL 对象并将其赋值给 img 元素的 src 属性
+            // videoElement.src = URL.createObjectURL(blob);
+        });
+
+        socket.addEventListener('open', () => {
+            console.log('WebSocket connection opened');
+        });
+
+        socket.addEventListener('close', () => {
+            console.log('WebSocket connection closed');
+        });
+
+        socket.addEventListener('error', error => {
+            console.error('WebSocket error:', error);
+        });
+    </script>
+</body>
+
+</html>

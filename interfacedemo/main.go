@@ -5,9 +5,8 @@ interface 是可比较类型，同其他基础类型一样可以用 == 判断，
 也可以作为 map 的 key
 
 参考：
- * https://zhuanlan.zhihu.com/p/522492698
- * https://www.veaxen.com/golang%E6%8E%A5%E5%8F%A3%E5%80%BC%EF%BC%88interface%EF%BC%89%E7%9A%84%E6%AF%94%E8%BE%83%E6%93%8D%E4%BD%9C%E5%88%86%E6%9E%90.html
-
+  - https://zhuanlan.zhihu.com/p/522492698
+  - https://www.veaxen.com/golang%E6%8E%A5%E5%8F%A3%E5%80%BC%EF%BC%88interface%EF%BC%89%E7%9A%84%E6%AF%94%E8%BE%83%E6%93%8D%E4%BD%9C%E5%88%86%E6%9E%90.html
 */
 package main
 
@@ -79,4 +78,32 @@ func main() {
 	fmt.Println("d5==d1?                   ", d5 == d1)
 	fmt.Println("&d5==&d1?                 ", &d5 == &d1)
 	fmt.Println("people(d5)==people(d1)?   ", comparePeople(&d1, &d5)) // 实际上是因为指针地址不同，道理通 &d5 == &d1。运行的时候会自动调用 runtime.convT2I(SB) 将 struct 转为 interface
+
+	changeInterface()
+}
+
+type Message interface {
+	Get() string
+}
+
+type Entity struct {
+	m string
+}
+
+func (e *Entity) Get() string {
+	return e.m
+}
+
+func changeMsg(m Message) {
+	e2 := &Entity{"b"}
+	t := m.(*Entity)
+	*t = *e2
+	fmt.Println("changed:", m.Get())
+}
+
+func changeInterface() {
+	e := &Entity{"a"}
+	fmt.Println("changeInterface before:", e.Get())
+	changeMsg(e)
+	fmt.Println("changeInterface after: ", e.Get())
 }
